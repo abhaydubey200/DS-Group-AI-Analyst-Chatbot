@@ -1,12 +1,12 @@
 # execution_engine/executor.py
 
+from model_governance_engine.drift_detector import DriftDetector
+from model_governance_engine.retrain_engine import AutoRetrainEngine
+from model_governance_engine.training_data_manager import TrainingDataManager
+
 from explainability_engine.explanation_generator import ExplanationGenerator
 from explainability_engine.assumption_tracker import get_assumptions
 from explainability_engine.confidence_estimator import estimate_confidence
-
-from senior_ds_engine.hypothesis_engine import HypothesisEngine
-from senior_ds_engine.feature_importance_engine import FeatureImportanceEngine
-from senior_ds_engine.what_if_simulator import WhatIfSimulator
 
 
 class PlanExecutor:
@@ -15,47 +15,39 @@ class PlanExecutor:
         self.df = df
         self.entities = entities
         self.explainer = ExplanationGenerator()
-
-        self.hypothesis_engine = HypothesisEngine()
-        self.feature_engine = FeatureImportanceEngine()
-        self.whatif_engine = WhatIfSimulator()
+        self.drift_detector = DriftDetector()
+        self.retrain_engine = AutoRetrainEngine()
+        self.data_manager = TrainingDataManager()
 
     def execute(self, plan: dict) -> dict:
 
-        result = {
-            "summary": "Analysis completed successfully"
-        }
+        # Save new dataset for future training
+        dataset_path = self.data_manager.save_dataset(self.df)
 
-        # Senior Data Scientist Logic
-        if plan["analysis_type"] == "comparison":
-            numeric_cols = self.df.select_dtypes(include="number").columns
-            if len(numeric_cols) >= 2:
-                group_a = self.df[numeric_cols[0]]
-                group_b = self.df[numeric_cols[1]]
-                result["hypothesis_test"] = self.hypothesis_engine.run_t_test(
-                    group_a, group_b
-                )
+        # Detect drift (if previous data exists)
+        drift_report = {}
+        previous_files = os.listdir(self.data_manager.base_dir)
+        if len(previous_files) > 1:
+            old_data_path = previous_files[-2]
+            old_df = pd.read_csv(os.path.join(self.data_manager.base_dir, old_data_path))
+            drift_report = self.drift_detector.detect_drift(old_df, self.df)
 
-        if plan["analysis_type"] in ["forecasting", "root_cause"]:
-            numeric_cols = self.df.select_dtypes(include="number").columns
-            if len(numeric_cols) > 1:
-                result["feature_importance"] = self.feature_engine.calculate(
-                    self.df, numeric_cols[0]
-                )
+            # Auto-retrain if drift detected
+            if any(col["drift_detected"] for col in drift_report.values()):
+                retrain_result = self.retrain_engine.retrain_forecast_model(self.df, model_name="forecast_model")
+            else:
+                retrain_result = None
+        else:
+            retrain_result = self.retrain_engine.retrain_forecast_model(self.df, model_name="forecast_model")
 
-        if "what_if" in plan["analysis_type"]:
-            numeric_cols = self.df.select_dtypes(include="number").columns
-            if numeric_cols.any():
-                result["what_if"] = self.whatif_engine.simulate(
-                    self.df, numeric_cols[0], 10
-                )
-
-        explanation = self.explainer.generate(plan, result)
+        explanation = self.explainer.generate(plan, {})
         assumptions = get_assumptions(plan["analysis_type"])
-        confidence = estimate_confidence(result)
+        confidence = estimate_confidence({})
 
         return {
-            "result": result,
+            "dataset_path": dataset_path,
+            "drift_report": drift_report,
+            "retrain_result": retrain_result,
             "explanation": explanation,
             "assumptions": assumptions,
             "confidence_score": confidence
