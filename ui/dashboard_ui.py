@@ -1,14 +1,13 @@
 # ui/dashboard_ui.py
 
 import streamlit as st
+import pandas as pd
 
 from ai_engine.intent_detector import detect_intent
 from ai_engine.entity_extractor import extract_entities
 from ai_engine.query_planner import build_analysis_plan
 from execution_engine.executor import PlanExecutor
 from conversation_engine.conversation_memory import ConversationMemory
-
-import pandas as pd
 
 
 def render_dashboard():
@@ -27,10 +26,7 @@ def render_dashboard():
     if uploaded_file:
         st.session_state.df = pd.read_csv(uploaded_file)
 
-    user_query = st.text_input(
-        "Ask a business question",
-        placeholder="Why did sales drop in North region in Q3?"
-    )
+    user_query = st.text_input("Ask a business question")
 
     if st.button("Analyze") and user_query:
 
@@ -50,14 +46,23 @@ def render_dashboard():
             plan["entities"]
         )
 
-        result = executor.execute(plan)
+        output = executor.execute(plan)
 
         st.session_state.memory.add_turn(
             user_query, intent, plan["entities"]
         )
 
-        st.subheader("📊 Results")
-        st.json(result)
+        st.subheader("📊 Analysis Result")
+        st.json(output["result"])
+
+        st.subheader("🧠 AI Explanation")
+        st.markdown(output["explanation"])
+
+        st.subheader("⚠️ Assumptions")
+        st.write(output["assumptions"])
+
+        st.subheader("✅ Confidence Score")
+        st.progress(output["confidence_score"])
 
 
 if __name__ == "__main__":
