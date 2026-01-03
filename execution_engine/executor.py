@@ -1,14 +1,18 @@
 # execution_engine/executor.py
 
 import pandas as pd
+
 from execution_engine.context import ExecutionContext
 from execution_engine.step_router import route_step
 
+from data_quality.missing_values import analyze_missing_values
+from data_quality.outlier_detection import detect_outliers_iqr
+from data_quality.freshness import check_data_freshness
+from data_quality.volume_check import check_data_volume
+from data_quality.confidence_score import calculate_confidence_score
+
 
 class PlanExecutor:
-    """
-    Executes an analysis plan step by step
-    """
 
     def __init__(self, dataframe: pd.DataFrame, entities: dict):
         self.context = ExecutionContext()
@@ -22,17 +26,17 @@ class PlanExecutor:
                 handler = getattr(self, handler_name, None)
                 if handler:
                     handler()
-                else:
-                    self.context.log(f"No handler implemented for {step}")
-            else:
-                self.context.log(f"Unknown step: {step}")
+
+        # 🔹 Attach confidence at end
+        self.execute_data_quality_check()
 
         return {
             "results": self.context.results,
+            "confidence": self.context.results.get("confidence_score"),
             "logs": self.context.logs
         }
 
-    # ---------------- EXECUTION STEPS ----------------
+    # ---------------- EXISTING STEPS ----------------
 
     def execute_load_dataset(self):
         self.context.log("Dataset already loaded")
@@ -45,7 +49,6 @@ class PlanExecutor:
             self.context.update_filtered_dataset(
                 df[df["Quarter"] == time_entity]
             )
-        self.context.log(f"Filtered by time: {time_entity}")
 
     def execute_filter_by_region(self):
         df = self.context.filtered_dataset
@@ -55,61 +58,39 @@ class PlanExecutor:
             self.context.update_filtered_dataset(
                 df[df["Region"] == region]
             )
-        self.context.log(f"Filtered by region: {region}")
-
-    def execute_metric_trend(self):
-        metric = self.context.entities.get("metric", "sales")
-        df = self.context.filtered_dataset
-
-        if metric and metric.capitalize() in df.columns:
-            trend = df.groupby("Month")[metric.capitalize()].sum()
-            self.context.add_result("metric_trend", trend.to_dict())
-
-        self.context.log("Metric trend analysis executed")
-
-    def execute_contribution(self):
-        df = self.context.filtered_dataset
-
-        if "Region" in df.columns and "Sales" in df.columns:
-            contribution = (
-                df.groupby("Region")["Sales"]
-                .sum()
-                .sort_values(ascending=False)
-            )
-            self.context.add_result(
-                "regional_contribution",
-                contribution.to_dict()
-            )
-
-        self.context.log("Contribution analysis executed")
-
-    def execute_variance(self):
-        df = self.context.filtered_dataset
-
-        if "Sales" in df.columns:
-            variance = df["Sales"].var()
-            self.context.add_result("sales_variance", variance)
-
-        self.context.log("Variance analysis executed")
 
     def execute_basic_analysis(self):
         df = self.context.filtered_dataset
-        summary = df.describe().to_dict()
-        self.context.add_result("summary", summary)
-        self.context.log("Basic analysis executed")
+        self.context.add_result("summary", df.describe().to_dict())
 
-    def execute_generate_insights(self):
-        insights = []
+    # ---------------- DATA QUALITY ----------------
 
-        if "sales_variance" in self.context.results:
-            insights.append(
-                "Sales variance is high, indicating instability in performance."
-            )
+    def execute_data_quality_check(self):
+        df = self.context.filtered_dataset
 
-        if "regional_contribution" in self.context.results:
-            insights.append(
-                "Sales heavily depend on top-performing regions."
-            )
+        missing = analyze_missing_values(df)
+        outliers = detect_outliers_iqr(df)
+        volume = check_data_volume(df)
 
-        self.context.add_result("insights", insights)
-        self.context.log("Insights generated")
+        freshness = check_data_freshness(
+            df, date_column="Date"
+        )
+
+        total_outliers = sum(outliers.values())
+
+        confidence = calculate_confidence_score(
+            missing_percentage=missing["missing_percentage"],
+            outlier_count=total_outliers,
+            freshness_days=freshness.get("freshness_days"),
+            volume_status=volume["volume_status"]
+        )
+
+        self.context.add_result("data_quality", {
+            "missing": missing,
+            "outliers": outliers,
+            "freshness": freshness,
+            "volume": volume
+        })
+
+        self.context.add_result("confidence_score", confidence)
+        self.context.log(f"Confidence score calculated: {confidence}")
