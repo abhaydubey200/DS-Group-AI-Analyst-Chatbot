@@ -18,6 +18,11 @@ from insight_engine.insight_ranker import rank_insights
 from recommendation_engine.recommendation_generator import generate_recommendations
 from recommendation_engine.action_prioritizer import prioritize_actions
 
+from learning_engine.pattern_extractor import extract_data_pattern
+from learning_engine.memory_store import add_pattern
+from learning_engine.model_trainer import train_internal_models
+from learning_engine.purge_manager import auto_purge_if_needed
+
 
 class PlanExecutor:
 
@@ -37,12 +42,14 @@ class PlanExecutor:
         self.execute_data_quality_check()
         self.execute_insight_pipeline()
         self.execute_recommendation_pipeline()
+        self.execute_learning_pipeline()
 
         return {
             "results": self.context.results,
             "insights": self.context.results.get("ranked_insights"),
             "recommendations": self.context.results.get("recommended_actions"),
             "confidence": self.context.results.get("confidence_score"),
+            "learning_status": self.context.results.get("learning_status"),
             "logs": self.context.logs
         }
 
@@ -56,18 +63,14 @@ class PlanExecutor:
         time_entity = self.context.entities.get("time_period")
 
         if time_entity and "Quarter" in df.columns:
-            self.context.update_filtered_dataset(
-                df[df["Quarter"] == time_entity]
-            )
+            self.context.update_filtered_dataset(df[df["Quarter"] == time_entity])
 
     def execute_filter_by_region(self):
         df = self.context.filtered_dataset
         region = self.context.entities.get("region")
 
         if region and "Region" in df.columns:
-            self.context.update_filtered_dataset(
-                df[df["Region"] == region]
-            )
+            self.context.update_filtered_dataset(df[df["Region"] == region])
 
     def execute_basic_analysis(self):
         df = self.context.filtered_dataset
@@ -83,50 +86,44 @@ class PlanExecutor:
         volume = check_data_volume(df)
         freshness = check_data_freshness(df, date_column="Date")
 
-        total_outliers = sum(outliers.values())
-
         confidence = calculate_confidence_score(
-            missing_percentage=missing["missing_percentage"],
-            outlier_count=total_outliers,
-            freshness_days=freshness.get("freshness_days"),
-            volume_status=volume["volume_status"]
+            missing["missing_percentage"],
+            sum(outliers.values()),
+            freshness.get("freshness_days"),
+            volume["volume_status"]
         )
 
-        self.context.add_result("data_quality", {
-            "missing": missing,
-            "outliers": outliers,
-            "freshness": freshness,
-            "volume": volume
-        })
-
         self.context.add_result("confidence_score", confidence)
-        self.context.log(f"Confidence score calculated: {confidence}")
 
     # ---------------- INSIGHTS ----------------
 
     def execute_insight_pipeline(self):
-        raw_insights = generate_insights(self.context.results)
-
-        enriched = []
-        for insight in raw_insights:
-            enriched.append(estimate_business_impact(insight))
-
-        ranked = rank_insights(enriched)
-
-        self.context.add_result("ranked_insights", ranked)
-        self.context.log("Insights ranked and prioritized")
+        insights = generate_insights(self.context.results)
+        insights = [estimate_business_impact(i) for i in insights]
+        self.context.add_result("ranked_insights", rank_insights(insights))
 
     # ---------------- RECOMMENDATIONS ----------------
 
     def execute_recommendation_pipeline(self):
-        ranked_insights = self.context.results.get("ranked_insights", [])
-        confidence = self.context.results.get("confidence_score", 100)
-
-        recommendations = generate_recommendations(
-            ranked_insights, confidence
+        recs = generate_recommendations(
+            self.context.results.get("ranked_insights", []),
+            self.context.results.get("confidence_score", 100)
         )
+        self.context.add_result("recommended_actions", prioritize_actions(recs))
 
-        prioritized = prioritize_actions(recommendations)
+    # ---------------- LEARNING ----------------
 
-        self.context.add_result("recommended_actions", prioritized)
-        self.context.log("Recommendations generated and prioritized")
+    def execute_learning_pipeline(self):
+        df = self.context.filtered_dataset
+
+        pattern = extract_data_pattern(df)
+        added = add_pattern(pattern)
+
+        training_status = train_internal_models()
+        purged = auto_purge_if_needed()
+
+        self.context.add_result("learning_status", {
+            "pattern_added": added,
+            "training": training_status,
+            "auto_purged": purged
+        })
