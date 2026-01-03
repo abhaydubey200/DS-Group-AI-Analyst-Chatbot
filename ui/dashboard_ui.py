@@ -20,13 +20,13 @@ def render_dashboard():
     if "df" not in st.session_state:
         st.session_state.df = pd.DataFrame()
 
-    st.title("🤖 DS Group AI Data Analyst")
+    st.title("🤖 DS Group AI Data Analyst — Senior Scientist Mode")
 
     uploaded_file = st.file_uploader("Upload Dataset", type=["csv", "xlsx"])
     if uploaded_file:
         st.session_state.df = pd.read_csv(uploaded_file)
 
-    user_query = st.text_input("Ask a business question")
+    user_query = st.text_input("Ask a deep analytical question")
 
     if st.button("Analyze") and user_query:
 
@@ -52,16 +52,16 @@ def render_dashboard():
             user_query, intent, plan["entities"]
         )
 
-        st.subheader("📊 Analysis Result")
+        st.subheader("📊 Core Result")
         st.json(output["result"])
 
-        st.subheader("🧠 AI Explanation")
+        st.subheader("🧠 Explanation")
         st.markdown(output["explanation"])
 
         st.subheader("⚠️ Assumptions")
         st.write(output["assumptions"])
 
-        st.subheader("✅ Confidence Score")
+        st.subheader("✅ Confidence")
         st.progress(output["confidence_score"])
 
 
