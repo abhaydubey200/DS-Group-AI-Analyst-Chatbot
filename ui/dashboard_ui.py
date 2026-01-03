@@ -2,9 +2,13 @@
 
 import streamlit as st
 import pandas as pd
-import logging
+import os
+import sys
 
-# ✅ Fixed import for Streamlit Cloud
+# Add project root to sys.path (optional, safety)
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# ✅ Fixed imports for Streamlit Cloud
 from logging_config import logger
 
 from ai_engine.intent_detector import detect_intent
@@ -13,14 +17,16 @@ from ai_engine.query_planner import build_analysis_plan
 from execution_engine.executor import PlanExecutor
 from conversation_engine.conversation_memory import ConversationMemory
 
-from ui.components.charts import render_forecast_chart, render_scenario_chart
-from ui.components.filters import render_filters
-from ui.components.panels import render_explanation_panel, render_senior_ds_panel
+from components.charts import render_forecast_chart, render_scenario_chart
+from components.filters import render_filters
+from components.panels import render_explanation_panel, render_senior_ds_panel
 
 def render_dashboard():
-
     st.set_page_config(page_title="DS Group AI Analyst", layout="wide")
-    st.markdown("<h1 style='text-align:center;color:black;'>🤖 DS Group AI Data Analyst</h1>", unsafe_allow_html=True)
+    st.markdown(
+        "<h1 style='text-align:center;color:black;'>🤖 DS Group AI Data Analyst</h1>", 
+        unsafe_allow_html=True
+    )
 
     # Initialize session memory
     if "memory" not in st.session_state:
@@ -29,7 +35,12 @@ def render_dashboard():
     if "df" not in st.session_state:
         st.session_state.df = pd.DataFrame()
 
-    uploaded_file = st.file_uploader("Upload Dataset (CSV / XLSX)", type=["csv", "xlsx"])
+    # Dataset uploader
+    uploaded_file = st.file_uploader(
+        "Upload Dataset (CSV / XLSX)", 
+        type=["csv", "xlsx"]
+    )
+
     if uploaded_file:
         try:
             if uploaded_file.name.endswith(".csv"):
@@ -43,30 +54,43 @@ def render_dashboard():
 
     df = st.session_state.df
     if not df.empty:
+        # Render filters panel
         filters = render_filters(df, df.columns)
         st.session_state.filtered_df = df
 
+    # User query input
     user_query = st.text_input("Ask a business question or analytical query:")
 
     if st.button("Analyze") and user_query:
         try:
+            # Detect intent & entities
             intent = detect_intent(user_query)
             intent["raw_query"] = user_query
             entities = extract_entities(user_query)
 
+            # Build analysis plan
             plan = build_analysis_plan(intent, entities, memory=st.session_state.memory)
 
+            # Execute plan
             executor = PlanExecutor(df, plan["entities"])
             output = executor.execute(plan)
 
+            # Add to session memory
             st.session_state.memory.add_turn(user_query, intent, plan["entities"])
 
+            # Display core result
             st.subheader("📊 Core Result")
             st.json(output["result"])
 
-            render_explanation_panel(output["explanation"], output["assumptions"], output["confidence_score"])
+            # Render panels
+            render_explanation_panel(
+                output["explanation"], 
+                output["assumptions"], 
+                output["confidence_score"]
+            )
             render_senior_ds_panel(output["result"])
 
+            # Render charts
             if "forecast" in output["result"]:
                 render_forecast_chart(output["result"]["forecast"])
             if "scenarios" in output.get("drift_report", {}):
