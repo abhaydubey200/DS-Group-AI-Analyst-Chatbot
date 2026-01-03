@@ -1,63 +1,51 @@
-# ui/dashboard_ui.py
-import streamlit as st
-from ui.components.header import render_header
-from ui.components.sidebar import render_sidebar
-from ui.components.metric_card import render_metric_card
-from ui.components.chart_card import render_chart_card
-from ui.components.chat_bubble import render_chat_bubble
+    elif page == "Deep Analysis":
+        st.markdown("<h3>Deep Analysis & Root Cause 🔍</h3>", unsafe_allow_html=True)
 
-def render_dashboard():
-    # Apply custom CSS
-    with open("ui/theme/layout.css") as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+        from ui.components.analysis_section import render_analysis_section
+        from ui.components.insight_card import render_insight_card
 
-    # Header
-    render_header()
-
-    # Sidebar navigation
-    page = render_sidebar()
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    if page == "Overview":
-        # KPI Cards Row
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            render_metric_card("Total Sales", "₹ 3,45,00,000", delta="5% ↑", description="Compared to last month")
-        with col2:
-            render_metric_card("Total Orders", "12,450", delta="2% ↑")
-        with col3:
-            render_metric_card("Active Customers", "5,230", delta="3% ↓")
-        with col4:
-            render_metric_card("New Products", "32", delta="8% ↑")
-        # Charts Row
-        st.markdown("<br>", unsafe_allow_html=True)
+        # Analysis sections
         col1, col2 = st.columns(2)
         with col1:
-            render_chart_card("Monthly Sales Trend")
+            render_analysis_section(
+                "Sales Trend Analysis",
+                "Understanding overall sales movement over time"
+            )
         with col2:
-            render_chart_card("Top 5 Products")
+            render_analysis_section(
+                "Regional Contribution Analysis",
+                "Identifying regions driving growth or decline"
+            )
 
-    elif page == "Chat with AI":
-        st.markdown("<h3>DS Group AI Assistant 🤖</h3>", unsafe_allow_html=True)
-        if 'chat_history' not in st.session_state:
-            st.session_state.chat_history = []
+        col3, col4 = st.columns(2)
+        with col3:
+            render_analysis_section(
+                "Product-wise Variance",
+                "Detecting products causing revenue fluctuations"
+            )
+        with col4:
+            render_analysis_section(
+                "Customer Segment Analysis",
+                "Evaluating behavior of key customer groups"
+            )
 
-        # Display chat history
-        for chat in st.session_state.chat_history:
-            render_chat_bubble(chat['message'], sender=chat['sender'])
+        st.markdown("<br>", unsafe_allow_html=True)
 
-        # User input
-        user_input = st.text_input("Ask your question:", "")
-        if st.button("Send") and user_input:
-            # Append user message
-            st.session_state.chat_history.append({'message': user_input, 'sender': 'user'})
-            # Placeholder AI response
-            ai_response = "🤖 This is a placeholder response. AI engine will respond here."
-            st.session_state.chat_history.append({'message': ai_response, 'sender': 'ai'})
-            st.experimental_rerun()
+        # Insight Cards
+        render_insight_card(
+            "Key Insight",
+            "North region contributed 42% of total sales growth in the last quarter.",
+            level="info"
+        )
 
-    else:
-        st.markdown(f"<div style='padding:20px;'>Welcome to the {page} page!</div>", unsafe_allow_html=True)
+        render_insight_card(
+            "Risk Alert",
+            "Top 3 products show declining sales despite overall market growth.",
+            level="warning"
+        )
 
-if __name__ == "__main__":
-    render_dashboard()
+        render_insight_card(
+            "Critical Observation",
+            "High dependency on a single distributor increases revenue risk.",
+            level="critical"
+        )
