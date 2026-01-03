@@ -15,6 +15,9 @@ from insight_engine.insight_generator import generate_insights
 from insight_engine.impact_estimator import estimate_business_impact
 from insight_engine.insight_ranker import rank_insights
 
+from recommendation_engine.recommendation_generator import generate_recommendations
+from recommendation_engine.action_prioritizer import prioritize_actions
+
 
 class PlanExecutor:
 
@@ -33,10 +36,12 @@ class PlanExecutor:
 
         self.execute_data_quality_check()
         self.execute_insight_pipeline()
+        self.execute_recommendation_pipeline()
 
         return {
             "results": self.context.results,
             "insights": self.context.results.get("ranked_insights"),
+            "recommendations": self.context.results.get("recommended_actions"),
             "confidence": self.context.results.get("confidence_score"),
             "logs": self.context.logs
         }
@@ -110,3 +115,18 @@ class PlanExecutor:
 
         self.context.add_result("ranked_insights", ranked)
         self.context.log("Insights ranked and prioritized")
+
+    # ---------------- RECOMMENDATIONS ----------------
+
+    def execute_recommendation_pipeline(self):
+        ranked_insights = self.context.results.get("ranked_insights", [])
+        confidence = self.context.results.get("confidence_score", 100)
+
+        recommendations = generate_recommendations(
+            ranked_insights, confidence
+        )
+
+        prioritized = prioritize_actions(recommendations)
+
+        self.context.add_result("recommended_actions", prioritized)
+        self.context.log("Recommendations generated and prioritized")
