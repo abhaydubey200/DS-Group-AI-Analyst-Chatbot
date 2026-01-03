@@ -22,10 +22,7 @@ from components.panels import render_explanation_panel, render_senior_ds_panel
 
 def render_dashboard():
     st.set_page_config(page_title="DS Group AI Analyst", layout="wide")
-    st.markdown(
-        "<h1 style='text-align:center;color:black;'>🤖 DS Group AI Data Analyst</h1>",
-        unsafe_allow_html=True
-    )
+    st.markdown("<h1 style='text-align:center;color:black;'>🤖 DS Group AI Data Analyst</h1>", unsafe_allow_html=True)
 
     if "memory" not in st.session_state:
         st.session_state.memory = ConversationMemory()
