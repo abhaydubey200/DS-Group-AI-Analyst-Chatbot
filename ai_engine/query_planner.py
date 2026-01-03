@@ -1,58 +1,45 @@
 # ai_engine/query_planner.py
 
-def build_analysis_plan(intent: dict, entities: dict) -> dict:
+from conversation_engine.followup_detector import is_followup_query
+from conversation_engine.context_merger import merge_entities
+
+
+def build_analysis_plan(intent: dict, entities: dict, memory=None) -> dict:
     """
     Convert intent + entities into an executable analysis plan.
     """
 
+    if memory and is_followup_query(intent.get("raw_query", "")):
+        entities = merge_entities(
+            entities,
+            memory.get_last_entities()
+        )
+
     plan = {
         "analysis_type": intent["intent"],
-        "steps": []
+        "steps": [],
+        "entities": entities
     }
 
-    if intent["intent"] == "root_cause_analysis":
-        plan["steps"] = [
-            "load_dataset",
-            "filter_by_time",
-            "filter_by_region",
-            "metric_trend_analysis",
-            "contribution_analysis",
-            "variance_analysis",
-            "generate_insights"
-        ]
-
-    elif intent["intent"] == "forecasting":
+    if intent["intent"] == "forecasting":
         plan["steps"] = [
             "load_dataset",
             "metric_selection",
             "time_series_preparation",
-            "model_selection",
-            "forecast_execution",
-            "confidence_estimation"
-        ]
-
-    elif intent["intent"] == "trend_analysis":
-        plan["steps"] = [
-            "load_dataset",
-            "metric_selection",
-            "time_series_analysis",
-            "growth_rate_calculation"
+            "forecast_execution"
         ]
 
     elif intent["intent"] == "comparison":
         plan["steps"] = [
             "load_dataset",
-            "group_selection",
-            "metric_comparison",
-            "statistical_test"
+            "filter_by_region",
+            "metric_comparison"
         ]
 
     else:
         plan["steps"] = [
             "load_dataset",
-            "basic_analysis",
-            "summary_generation"
+            "basic_analysis"
         ]
 
-    plan["entities"] = entities
     return plan
