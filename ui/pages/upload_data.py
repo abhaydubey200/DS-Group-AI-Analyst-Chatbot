@@ -2,7 +2,6 @@
 
 import streamlit as st
 from logging_config import logger
-
 from data_engine.uploader import load_dataset
 
 def page_upload_data():
