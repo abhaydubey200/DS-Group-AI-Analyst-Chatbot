@@ -7,6 +7,11 @@ from execution_engine.step_router import route_step
 
 from forecasting_engine.forecaster import generate_forecast
 
+from scenario_engine.scenario_builder import build_scenarios
+from scenario_engine.price_simulator import simulate_price_change
+from scenario_engine.volume_simulator import simulate_volume_change
+from scenario_engine.scenario_evaluator import evaluate_scenario
+
 from insight_engine.insight_generator import generate_insights
 from insight_engine.impact_estimator import estimate_business_impact
 from insight_engine.insight_ranker import rank_insights
@@ -32,13 +37,14 @@ class PlanExecutor:
 
         if plan["analysis_type"] == "forecasting":
             self.execute_forecasting()
+            self.execute_scenarios()
 
         self.execute_insight_pipeline()
         self.execute_recommendation_pipeline()
 
         return self.context.results
 
-    # ---------------- FORECASTING ----------------
+    # ---------------- FORECAST ----------------
 
     def execute_forecasting(self):
         df = self.context.filtered_dataset
@@ -50,6 +56,38 @@ class PlanExecutor:
         )
 
         self.context.add_result("forecast", forecast_result)
+
+    # ---------------- SCENARIOS ----------------
+
+    def execute_scenarios(self):
+        forecast = self.context.results.get("forecast")
+        base_df = forecast["forecast"]
+
+        scenarios = build_scenarios()
+        scenario_results = []
+
+        for scenario in scenarios:
+            simulated_df = base_df.copy()
+
+            if scenario["price_change_pct"] != 0:
+                simulated_df = simulate_price_change(
+                    base_df, scenario["price_change_pct"]
+                )
+
+            if scenario["volume_change_pct"] != 0:
+                simulated_df = simulate_volume_change(
+                    base_df, scenario["volume_change_pct"]
+                )
+
+            evaluation = evaluate_scenario(base_df, simulated_df)
+
+            scenario_results.append({
+                "scenario": scenario["name"],
+                "details": scenario,
+                "impact": evaluation
+            })
+
+        self.context.add_result("scenarios", scenario_results)
 
     # ---------------- INSIGHTS ----------------
 
