@@ -1,129 +1,63 @@
 # ui/dashboard_ui.py
 
 import streamlit as st
-import pandas as pd
-
-from ui.components.header import render_header
-from ui.components.sidebar import render_sidebar
-from ui.components.metric_card import render_metric_card
-from ui.components.chat_bubble import render_chat_bubble
-from ui.components.analysis_section import render_analysis_section
-from ui.components.insight_card import render_insight_card
-
-from ui.charts.sales_trend import sales_trend_chart
-from ui.charts.bar_chart import region_contribution_chart
-from ui.charts.pie_chart import product_share_chart
 
 from ai_engine.intent_detector import detect_intent
 from ai_engine.entity_extractor import extract_entities
 from ai_engine.query_planner import build_analysis_plan
-
 from execution_engine.executor import PlanExecutor
+from conversation_engine.conversation_memory import ConversationMemory
+
+import pandas as pd
 
 
 def render_dashboard():
 
-    with open("ui/theme/layout.css") as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    st.set_page_config(page_title="DS Group AI Analyst", layout="wide")
 
-    render_header("DS Group AI Data Analyst")
-    page = render_sidebar()
-    st.markdown("<br>", unsafe_allow_html=True)
+    if "memory" not in st.session_state:
+        st.session_state.memory = ConversationMemory()
 
-    # ---------------- OVERVIEW ----------------
-    if page == "Overview":
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            render_metric_card("Total Sales", "₹ 3,45,00,000", "5%")
-        with col2:
-            render_metric_card("Orders", "12,450", "2%")
-        with col3:
-            render_metric_card("Customers", "5,230", "-3%")
-        with col4:
-            render_metric_card("Products", "32", "8%")
+    if "df" not in st.session_state:
+        st.session_state.df = pd.DataFrame()
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.plotly_chart(sales_trend_chart(), use_container_width=True)
-        with col2:
-            st.plotly_chart(region_contribution_chart(), use_container_width=True)
+    st.title("🤖 DS Group AI Data Analyst")
 
-    # ---------------- CHAT WITH EXECUTION ----------------
-    elif page == "Chat with AI":
+    uploaded_file = st.file_uploader("Upload Dataset", type=["csv", "xlsx"])
+    if uploaded_file:
+        st.session_state.df = pd.read_csv(uploaded_file)
 
-        st.markdown("### 🤖 DS Group AI Analyst")
+    user_query = st.text_input(
+        "Ask a business question",
+        placeholder="Why did sales drop in North region in Q3?"
+    )
 
-        if "chat_history" not in st.session_state:
-            st.session_state.chat_history = []
+    if st.button("Analyze") and user_query:
 
-        if "uploaded_df" not in st.session_state:
-            st.info("Please upload a dataset first to enable analysis.")
-            for chat in st.session_state.chat_history:
-                render_chat_bubble(chat["message"], chat["sender"])
-            return
+        intent = detect_intent(user_query)
+        intent["raw_query"] = user_query
 
-        for chat in st.session_state.chat_history:
-            render_chat_bubble(chat["message"], chat["sender"])
+        entities = extract_entities(user_query)
 
-        user_input = st.text_input(
-            "Ask a data question",
-            placeholder="Why did sales drop in North region in Q3?"
+        plan = build_analysis_plan(
+            intent,
+            entities,
+            memory=st.session_state.memory
         )
 
-        if st.button("Send") and user_input:
-            st.session_state.chat_history.append(
-                {"message": user_input, "sender": "user"}
-            )
-
-            intent = detect_intent(user_input)
-            entities = extract_entities(user_input)
-            plan = build_analysis_plan(intent, entities)
-
-            executor = PlanExecutor(
-                st.session_state.uploaded_df,
-                entities
-            )
-            execution_output = executor.execute(plan)
-
-            ai_response = (
-                f"🧠 **Analysis Type:** {intent['intent']}\n\n"
-                f"📊 **Results:** {execution_output['results']}\n\n"
-                f"📝 **Logs:**\n- " +
-                "\n- ".join(execution_output["logs"])
-            )
-
-            st.session_state.chat_history.append(
-                {"message": ai_response, "sender": "ai"}
-            )
-
-            st.experimental_rerun()
-
-    # ---------------- DEEP ANALYSIS ----------------
-    elif page == "Deep Analysis":
-        st.markdown("### 🔍 Deep Analysis")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            render_analysis_section("Sales Trend")
-            st.plotly_chart(sales_trend_chart(), use_container_width=True)
-
-        with col2:
-            render_analysis_section("Regional Contribution")
-            st.plotly_chart(region_contribution_chart(), use_container_width=True)
-
-        render_insight_card(
-            "Key Insight",
-            "North region drives major variance in sales.",
-            level="info"
+        executor = PlanExecutor(
+            st.session_state.df,
+            plan["entities"]
         )
 
-    # ---------------- UPLOAD DATA ----------------
-    elif page == "Upload Data":
-        from ui.pages.upload_data import render_upload_page
-        render_upload_page()
+        result = executor.execute(plan)
 
-    else:
-        st.info("Module under development")
+        st.session_state.memory.add_turn(
+            user_query, intent, plan["entities"]
+        )
+
+        st.subheader("📊 Results")
+        st.json(result)
 
 
 if __name__ == "__main__":
