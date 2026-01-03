@@ -1,6 +1,7 @@
 # ui/dashboard_ui.py
 
 import streamlit as st
+import pandas as pd
 
 from ui.components.header import render_header
 from ui.components.sidebar import render_sidebar
@@ -17,6 +18,8 @@ from ai_engine.intent_detector import detect_intent
 from ai_engine.entity_extractor import extract_entities
 from ai_engine.query_planner import build_analysis_plan
 
+from execution_engine.executor import PlanExecutor
+
 
 def render_dashboard():
 
@@ -29,16 +32,15 @@ def render_dashboard():
 
     # ---------------- OVERVIEW ----------------
     if page == "Overview":
-
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            render_metric_card("Total Sales", "₹ 3,45,00,000", delta="5%")
+            render_metric_card("Total Sales", "₹ 3,45,00,000", "5%")
         with col2:
-            render_metric_card("Orders", "12,450", delta="2%")
+            render_metric_card("Orders", "12,450", "2%")
         with col3:
-            render_metric_card("Customers", "5,230", delta="-3%")
+            render_metric_card("Customers", "5,230", "-3%")
         with col4:
-            render_metric_card("Products", "32", delta="8%")
+            render_metric_card("Products", "32", "8%")
 
         col1, col2 = st.columns(2)
         with col1:
@@ -46,7 +48,7 @@ def render_dashboard():
         with col2:
             st.plotly_chart(region_contribution_chart(), use_container_width=True)
 
-    # ---------------- CHAT AI ----------------
+    # ---------------- CHAT WITH EXECUTION ----------------
     elif page == "Chat with AI":
 
         st.markdown("### 🤖 DS Group AI Analyst")
@@ -54,16 +56,21 @@ def render_dashboard():
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
 
+        if "uploaded_df" not in st.session_state:
+            st.info("Please upload a dataset first to enable analysis.")
+            for chat in st.session_state.chat_history:
+                render_chat_bubble(chat["message"], chat["sender"])
+            return
+
         for chat in st.session_state.chat_history:
             render_chat_bubble(chat["message"], chat["sender"])
 
         user_input = st.text_input(
-            "Ask a business question",
+            "Ask a data question",
             placeholder="Why did sales drop in North region in Q3?"
         )
 
         if st.button("Send") and user_input:
-
             st.session_state.chat_history.append(
                 {"message": user_input, "sender": "user"}
             )
@@ -72,11 +79,17 @@ def render_dashboard():
             entities = extract_entities(user_input)
             plan = build_analysis_plan(intent, entities)
 
+            executor = PlanExecutor(
+                st.session_state.uploaded_df,
+                entities
+            )
+            execution_output = executor.execute(plan)
+
             ai_response = (
-                f"📊 **Intent Detected:** {intent['intent']}\n\n"
-                f"🧩 **Entities:** {entities}\n\n"
-                f"🛠️ **Planned Steps:**\n- " +
-                "\n- ".join(plan["steps"])
+                f"🧠 **Analysis Type:** {intent['intent']}\n\n"
+                f"📊 **Results:** {execution_output['results']}\n\n"
+                f"📝 **Logs:**\n- " +
+                "\n- ".join(execution_output["logs"])
             )
 
             st.session_state.chat_history.append(
@@ -87,7 +100,6 @@ def render_dashboard():
 
     # ---------------- DEEP ANALYSIS ----------------
     elif page == "Deep Analysis":
-
         st.markdown("### 🔍 Deep Analysis")
 
         col1, col2 = st.columns(2)
@@ -101,7 +113,7 @@ def render_dashboard():
 
         render_insight_card(
             "Key Insight",
-            "North region contributed 42% of growth last quarter",
+            "North region drives major variance in sales.",
             level="info"
         )
 
