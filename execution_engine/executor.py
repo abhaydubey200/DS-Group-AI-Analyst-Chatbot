@@ -11,6 +11,10 @@ from data_quality.freshness import check_data_freshness
 from data_quality.volume_check import check_data_volume
 from data_quality.confidence_score import calculate_confidence_score
 
+from insight_engine.insight_generator import generate_insights
+from insight_engine.impact_estimator import estimate_business_impact
+from insight_engine.insight_ranker import rank_insights
+
 
 class PlanExecutor:
 
@@ -27,16 +31,17 @@ class PlanExecutor:
                 if handler:
                     handler()
 
-        # 🔹 Attach confidence at end
         self.execute_data_quality_check()
+        self.execute_insight_pipeline()
 
         return {
             "results": self.context.results,
+            "insights": self.context.results.get("ranked_insights"),
             "confidence": self.context.results.get("confidence_score"),
             "logs": self.context.logs
         }
 
-    # ---------------- EXISTING STEPS ----------------
+    # ---------------- BASIC ----------------
 
     def execute_load_dataset(self):
         self.context.log("Dataset already loaded")
@@ -71,10 +76,7 @@ class PlanExecutor:
         missing = analyze_missing_values(df)
         outliers = detect_outliers_iqr(df)
         volume = check_data_volume(df)
-
-        freshness = check_data_freshness(
-            df, date_column="Date"
-        )
+        freshness = check_data_freshness(df, date_column="Date")
 
         total_outliers = sum(outliers.values())
 
@@ -94,3 +96,17 @@ class PlanExecutor:
 
         self.context.add_result("confidence_score", confidence)
         self.context.log(f"Confidence score calculated: {confidence}")
+
+    # ---------------- INSIGHTS ----------------
+
+    def execute_insight_pipeline(self):
+        raw_insights = generate_insights(self.context.results)
+
+        enriched = []
+        for insight in raw_insights:
+            enriched.append(estimate_business_impact(insight))
+
+        ranked = rank_insights(enriched)
+
+        self.context.add_result("ranked_insights", ranked)
+        self.context.log("Insights ranked and prioritized")
