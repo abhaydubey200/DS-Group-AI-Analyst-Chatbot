@@ -3,7 +3,9 @@
 import streamlit as st
 import pandas as pd
 import logging
-from deployment.logging_config import logger
+
+# ✅ Fixed import for Streamlit Cloud
+from logging_config import logger
 
 from ai_engine.intent_detector import detect_intent
 from ai_engine.entity_extractor import extract_entities
@@ -20,7 +22,7 @@ def render_dashboard():
     st.set_page_config(page_title="DS Group AI Analyst", layout="wide")
     st.markdown("<h1 style='text-align:center;color:black;'>🤖 DS Group AI Data Analyst</h1>", unsafe_allow_html=True)
 
-    # Initialize memory
+    # Initialize session memory
     if "memory" not in st.session_state:
         st.session_state.memory = ConversationMemory()
 
